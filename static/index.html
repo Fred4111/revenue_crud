@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root{
+      --bg:#f5f7fb; --card:#ffffff; --ink:#0f172a; --muted:#667085; --ring:#e6eaf2; --brand:#0b3b77;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      color:var(--ink);background:var(--bg)}
+    .shell{max-width:1200px;margin:0 auto;padding:24px}
+    .topbar{background:linear-gradient(180deg,#0e3d7f,#123b6b);color:#fff;padding:22px 24px}
+    .title{font-size:28px;font-weight:700;letter-spacing:.2px}
+    .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:22px}
+    .card{background:var(--card);border:1px solid var(--ring);border-radius:14px;padding:18px;box-shadow:0 4px 14px rgba(16,24,40,.04)}
+    .label{font-weight:600;font-size:14px;color:var(--muted)}
+    .value{margin-top:8px;font-size:32px;font-weight:700}
+    .grid{display:grid;grid-template-columns:1.3fr .9fr;gap:18px;margin-top:18px}
+    .section-title{font-weight:700;font-size:18px;margin:0 0 12px}
+    .chart-wrap{background:var(--card);border:1px solid var(--ring);border-radius:14px;padding:18px}
+    .table-wrap{background:var(--card);border:1px solid var(--ring);border-radius:14px;margin-top:18px;overflow:hidden}
+    .table-head{padding:18px;border-bottom:1px solid var(--ring)}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:14px 18px;text-align:left;border-bottom:1px solid var(--ring);font-size:14px}
+    th{color:var(--muted);font-weight:600;background:#fafbff}
+    .action-btn{
+      border:none;
+      padding:6px 10px;
+      font-size:12px;
+      border-radius:4px;
+      cursor:pointer;
+    }
+    .delete-btn{background:#dc2626;color:white;}
+    .edit-btn{background:#2563eb;color:white;}
+    .save-btn{background:#16a34a;color:white;}
+    .delete-btn:hover,.edit-btn:hover,.save-btn:hover{opacity:0.85}
+    @media (max-width: 990px){
+      .cards{grid-template-columns:1fr}
+      .grid{grid-template-columns:1fr}
+    }
+    .form-wrap{
+      background:var(--card);
+      border:1px solid var(--ring);
+      border-radius:14px;
+      padding:18px;
+      margin-top:18px;
+    }
+    .form-row{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px}
+    .form-row input{
+      flex:1;
+      padding:10px;
+      border:1px solid var(--ring);
+      border-radius:6px;
+      font-size:14px;
+    }
+    button{
+      background:var(--brand);
+      color:white;
+      border:none;
+      padding:10px 16px;
+      font-size:14px;
+      border-radius:6px;
+      cursor:pointer;
+    }
+    button:hover{opacity:0.9}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell">
+      <div class="title">Dashboard</div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="cards">
+      <div class="card">
+        <div class="label">Total Revenue</div>
+        <div class="value" id="totalRevenue">₵0</div>
+      </div>
+      <div class="card">
+        <div class="label">Revenue This Month</div>
+        <div class="value" id="revenueThisMonth">₵0</div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="chart-wrap">
+        <h3 class="section-title">Revenue</h3>
+        <canvas id="revenueLine" height="120"></canvas>
+      </div>
+      <div class="chart-wrap">
+        <h3 class="section-title">Revenue By Category</h3>
+        <canvas id="revenuePie" height="120"></canvas>
+      </div>
+    </section>
+
+    <section class="form-wrap">
+      <h3 class="section-title">Add New Revenue Entry</h3>
+      <form id="revenueForm">
+        <div class="form-row">
+          <input type="date" id="date" required>
+          <input type="text" id="source" placeholder="Source" required>
+          <input type="number" id="amount" placeholder="Amount (₵)" required>
+          <input type="text" id="category" placeholder="Category" required>
+          <input type="text" id="revenueId" placeholder="Revenue ID (unique)" required>
+        </div>
+        <button type="submit">Add Revenue</button>
+      </form>
+    </section>
+
+    <section class="table-wrap">
+      <div class="table-head">
+        <h3 class="section-title" style="margin:0">Revenue generated</h3>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="revenueTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Source</th>
+              <th>Amount</th>
+              <th>Category</th>
+              <th>Revenue ID</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const API = ''; // same origin
+    let lineChart, pieChart;
+
+    function cedi(n){ return '₵' + Number(n ?? 0).toLocaleString(); }
+
+    async function loadRevenues(){
+      const res = await fetch(`${API}/api/revenues`);
+      const rows = await res.json();
+      const tbody = document.querySelector('#revenueTable tbody');
+      tbody.innerHTML = '';
+
+      let total = 0;
+      const byCat = {};
+      const byMonth = Array(12).fill(0);
+
+      rows.forEach(r => {
+        total += Number(r.amount);
+        byCat[r.category] = (byCat[r.category] || 0) + Number(r.amount);
+        const m = new Date(r.date).getMonth();
+        byMonth[m] += Number(r.amount);
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${r.date}</td>
+          <td>${r.source}</td>
+          <td>${cedi(r.amount)}</td>
+          <td>${r.category}</td>
+          <td>${r.revenue_id}</td>
+          <td>
+            <button class="action-btn edit-btn" data-id="${r.id}">Edit</button>
+            <button class="action-btn delete-btn" data-id="${r.id}">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('totalRevenue').textContent = cedi(total);
+      const now = new Date();
+      document.getElementById('revenueThisMonth').textContent = cedi(byMonth[now.getMonth()] || 0);
+
+      renderCharts(byCat, byMonth);
+    }
+
+    function renderCharts(byCat, byMonth){
+      const pieEl = document.getElementById('revenuePie');
+      const lineEl = document.getElementById('revenueLine');
+
+      if (pieChart) pieChart.destroy();
+      pieChart = new Chart(pieEl, {
+        type: 'pie',
+        data: {
+          labels: Object.keys(byCat),
+          datasets: [{ data: Object.values(byCat) }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'right' } } }
+      });
+
+      const labels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      if (lineChart) lineChart.destroy();
+      lineChart = new Chart(lineEl, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Revenue',
+            data: byMonth,
+            tension: 0.35,
+            borderWidth: 2,
+            fill: false,
+            pointRadius: 3
+          }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } } }
+      });
+    }
+
+    document.getElementById('revenueForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const date = document.getElementById('date').value;
+      const source = document.getElementById('source').value;
+      const amount = document.getElementById('amount').value;
+      const category = document.getElementById('category').value;
+      const revenue_id = document.getElementById('revenueId').value;
+
+      const res = await fetch(`${API}/api/revenues`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, source, amount, category, revenue_id })
+      });
+      if(!res.ok){
+        const err = await res.json();
+        alert(err.error || 'Failed to add');
+        return;
+      }
+      e.target.reset();
+      await loadRevenues();
+    });
+
+    document.querySelector('#revenueTable').addEventListener('click', async (e) => {
+      const btn = e.target.closest('button');
+      if(!btn) return;
+      const tr = btn.closest('tr');
+      const id = btn.dataset.id;
+
+      if (btn.classList.contains('delete-btn')){
+        if(!confirm('Delete this record?')) return;
+        const res = await fetch(`${API}/api/revenues/${id}`, { method: 'DELETE' });
+        if(res.ok) await loadRevenues();
+        return;
+      }
+
+      if (btn.classList.contains('edit-btn')){
+        const cells = tr.querySelectorAll('td');
+        const [cDate, cSource, cAmount, cCategory, cRevenueId] = cells;
+        cDate.innerHTML = `<input type="date" value="${cDate.textContent.trim()}">`;
+        cSource.innerHTML = `<input type="text" value="${cSource.textContent.trim()}">`;
+        const amtRaw = cAmount.textContent.replace(/[₵,]/g,'').trim();
+        cAmount.innerHTML = `<input type="number" step="0.01" value="${amtRaw}">`;
+        cCategory.innerHTML = `<input type="text" value="${cCategory.textContent.trim()}">`;
+        cRevenueId.innerHTML = `<input type="text" value="${cRevenueId.textContent.trim()}">`;
+        btn.textContent = 'Save';
+        btn.classList.remove('edit-btn');
+        btn.classList.add('save-btn');
+        return;
+      }
+
+      if (btn.classList.contains('save-btn')){
+        const cells = tr.querySelectorAll('td');
+        const date = cells[0].querySelector('input').value;
+        const source = cells[1].querySelector('input').value;
+        const amount = cells[2].querySelector('input').value;
+        const category = cells[3].querySelector('input').value;
+        const revenue_id = cells[4].querySelector('input').value;
+
+        const res = await fetch(`${API}/api/revenues/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date, source, amount, category, revenue_id })
+        });
+        if (!res.ok){
+          const err = await res.json();
+          alert(err.error || 'Failed to update');
+          return;
+        }
+        await loadRevenues();
+      }
+    });
+
+    loadRevenues();
+  </script>
+</body>
+</html>
